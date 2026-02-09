@@ -115,37 +115,37 @@
 - **Role**: GPU Math Engineer
 - **Output**: `kernels/secp256k1/secp256k1_ops.cuh` — point_add, point_double, specialized constant subs (sub_gx, sub_gy)
 - **Deps**: T03 (mp_uint256)
-- [ ] Status
+- [x] Status
 
 ### T17: Ed25519 Group Operations (ge25519)
 - **Role**: GPU Math Engineer
 - **Output**: `kernels/ed25519/ge25519.cuh` — extended coords point add/double, Niels-form mixed add, point compression
 - **Deps**: T08 (fe25519)
-- [ ] Status
+- [x] Status
 
 ### T18: TRX Address Encoding
 - **Role**: Chain Specialist
 - **Output**: `src/chain/tron.hpp`, `src/chain/tron.cpp`, `src/chain/chain.hpp` — fromHash(20 bytes) → T... address
 - **Deps**: T05 (sha256), T07 (base58)
-- [ ] Status
+- [x] Status
 
 ### T19: ETH Address Encoding
 - **Role**: Chain Specialist
 - **Output**: `src/chain/ethereum.hpp`, `src/chain/ethereum.cpp` — fromHash(20 bytes) → 0x... address with EIP-55 checksum
 - **Deps**: T07 (base58 — for chain.hpp shared interface)
-- [ ] Status
+- [x] Status
 
 ### T20: Solana Address Encoding
 - **Role**: Chain Specialist
 - **Output**: `src/chain/solana.hpp`, `src/chain/solana.cpp` — fromPublicKey(32 bytes) → Base58 address
 - **Deps**: T07 (base58)
-- [ ] Status
+- [x] Status
 
 ### T21: Scoring Mode Definitions
 - **Role**: Systems Architect
 - **Output**: `src/scoring/mode.hpp`, `src/scoring/mode.cpp`, `src/scoring/scorer.hpp` — prefix, suffix, matching, benchmark modes
 - **Deps**: T02 (types)
-- [ ] Status
+- [x] Status
 
 ---
 
