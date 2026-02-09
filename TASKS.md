@@ -19,93 +19,93 @@
 - **Role**: Build Engineer
 - **Output**: `CMakeLists.txt` with CUDA language support, sm_60+ targets, separate kernel/host libs, test targets
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T02: Core Types & Shared Headers
 - **Role**: Systems Architect
 - **Output**: `src/types.hpp` (mp_number, point, result, seed256), `src/hex_utils.hpp`
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T03: 256-bit Multiprecision Arithmetic (CUDA)
 - **Role**: GPU Math Engineer
 - **Output**: `kernels/common/mp_uint256.cuh` — add, sub, mul, mod_sub, mod_mul, mod_inverse for secp256k1 field (mod p = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F)
 - **Reference**: `profanity2/profanity.cl` lines 46–300
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T04: Keccak-256 GPU Implementation
 - **Role**: Cryptography Engineer
 - **Output**: `kernels/common/keccak.cuh` — SHA-3 Keccak-256 hash function for CUDA
 - **Reference**: `profanity2/keccak.cl`
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T05: SHA-256 Host Implementation
 - **Role**: Cryptography Engineer
 - **Output**: `src/crypto/sha256.hpp`, `src/crypto/sha256.cpp` — for TRX Base58Check checksum (host-side)
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T06: SHA-512 Host + GPU Implementation
 - **Role**: Cryptography Engineer
 - **Output**: `src/crypto/sha512.hpp`, `src/crypto/sha512.cpp`, `kernels/ed25519/sha512.cuh` — for Ed25519 key derivation
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T07: Base58 / Base58Check Encoding
 - **Role**: Encoding Specialist
 - **Output**: `src/chain/base58.hpp`, `src/chain/base58.cpp` — encode/decode for both TRX (Base58Check) and Solana (plain Base58)
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T08: Ed25519 Field Arithmetic (fe25519)
 - **Role**: GPU Math Engineer
 - **Output**: `kernels/ed25519/fe25519.cuh` — field arithmetic mod 2^255-19, radix-2^51 (5 limbs), add/sub/mul/sq/invert
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T09: Secp256k1 Precomputed Table Generator
 - **Role**: Tooling Engineer
 - **Output**: `tools/gen_precomp_secp256k1.py` → generates `kernels/secp256k1/secp256k1_precomp.cuh` (8160 generator multiples)
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T10: Ed25519 Precomputed Table Generator
 - **Role**: Tooling Engineer
 - **Output**: `tools/gen_precomp_ed25519.py` → generates `kernels/ed25519/ed25519_precomp.cuh` (base point multiples in Niels form)
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T11: Speed Sample / Throughput Measurement
 - **Role**: Systems Engineer
 - **Output**: `src/speed_sample.hpp`, `src/speed_sample.cpp` — hashrate tracking, rolling average, MH/s formatting
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T12: CLI Argument Parser
 - **Role**: Systems Engineer
 - **Output**: `src/arg_parser.hpp` — parse --chain, --prefix, --suffix, --devices, --benchmark, --worker, --panel, --token
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T13: GPU Memory RAII Wrapper
 - **Role**: Systems Engineer
 - **Output**: `src/dispatch/gpu_memory.hpp` — template wrapper for cudaMalloc/cudaFree/cudaMemcpyAsync with pinned host memory
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T14: gRPC Protocol Definition
 - **Role**: Protocol Engineer
 - **Output**: `proto/hyperfanity.proto` — service defs for Register, GetJob, ReportProgress, ReportResult
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ### T15: Address Verification Script
 - **Role**: Tooling Engineer
 - **Output**: `tools/verify_address.py` — given private key + chain, derive and verify address (uses ecdsa, pynacl, base58 Python libs)
 - **Deps**: none
-- [ ] Status
+- [x] Status
 
 ---
 

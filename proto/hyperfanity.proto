@@ -1,0 +1,81 @@
+syntax = "proto3";
+package hyperfanity;
+option go_package = "github.com/user/hyperfanity/panel/pb";
+
+service HyperfanityService {
+  // Worker registers with the panel
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Worker requests a job
+  rpc GetJob(GetJobRequest) returns (Job);
+
+  // Worker streams progress updates
+  rpc ReportProgress(stream ProgressUpdate) returns (Ack);
+
+  // Worker reports a vanity address result
+  rpc ReportResult(VanityResult) returns (Ack);
+
+  // Worker heartbeat
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message RegisterRequest {
+  string hostname = 1;
+  int32 gpu_count = 2;
+  repeated string gpu_names = 3;
+  string version = 4;
+}
+
+message RegisterResponse {
+  string worker_id = 1;
+  string token = 2;
+}
+
+message GetJobRequest {
+  string worker_id = 1;
+  string token = 2;
+  repeated string supported_chains = 3;
+}
+
+message Job {
+  string job_id = 1;
+  string chain = 2;
+  string pattern = 3;
+  string match_type = 4;  // "prefix", "suffix", "contains"
+  uint32 min_score = 5;
+  bytes seed_pubkey = 6;
+  bool full_keypair_mode = 7;
+}
+
+message ProgressUpdate {
+  string worker_id = 1;
+  string job_id = 2;
+  double hashrate_mhs = 3;
+  uint64 total_checked = 4;
+  uint32 best_score = 5;
+}
+
+message VanityResult {
+  string worker_id = 1;
+  string job_id = 2;
+  bytes private_key = 3;
+  bytes public_key = 4;
+  string address = 5;
+  uint32 score = 6;
+  string chain = 7;
+}
+
+message Ack {
+  bool success = 1;
+  string message = 2;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  string token = 2;
+}
+
+message HeartbeatResponse {
+  bool should_continue = 1;
+  string message = 2;
+}
