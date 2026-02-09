@@ -155,49 +155,49 @@
 - **Role**: GPU Kernel Engineer
 - **Output**: `kernels/secp256k1/secp256k1_init.cu` — initialize points from random seeds using precomputed table
 - **Deps**: T16 (secp256k1_ops), T09 (precomp table)
-- [ ] Status
+- [x] Status
 
 ### T23: Secp256k1 Batch Inverse Kernel
 - **Role**: GPU Kernel Engineer
 - **Output**: `kernels/secp256k1/secp256k1_inverse.cu` — Algorithm 2.11 batch modular inverse
 - **Deps**: T16 (secp256k1_ops)
-- [ ] Status
+- [x] Status
 
 ### T24: Secp256k1 Iterate Kernel
 - **Role**: GPU Kernel Engineer
 - **Output**: `kernels/secp256k1/secp256k1_iterate.cu` — iterative point addition + Keccak-256 hash, store 20-byte address hash
 - **Deps**: T16 (secp256k1_ops), T04 (keccak)
-- [ ] Status
+- [x] Status
 
 ### T25: Ed25519 Keygen Kernel
 - **Role**: GPU Kernel Engineer
 - **Output**: `kernels/ed25519/ed25519_keygen.cu` — full keypair: random seed → SHA-512 → clamp → scalar × B → compressed pubkey
 - **Deps**: T17 (ge25519), T06 (sha512 GPU), T10 (ed25519 precomp)
-- [ ] Status
+- [x] Status
 
 ### T26: Ed25519 Batch Inverse Kernel
 - **Role**: GPU Kernel Engineer
 - **Output**: `kernels/ed25519/ed25519_inverse.cu` — Algorithm 2.11 over fe25519 field
 - **Deps**: T17 (ge25519)
-- [ ] Status
+- [x] Status
 
 ### T27: Ed25519 Iterate Kernel
 - **Role**: GPU Kernel Engineer
 - **Output**: `kernels/ed25519/ed25519_iterate.cu` — iterative base-point addition, store 32-byte compressed pubkey
 - **Deps**: T17 (ge25519), T10 (ed25519 precomp)
-- [ ] Status
+- [x] Status
 
 ### T28: Scoring Kernels
 - **Role**: GPU Kernel Engineer
 - **Output**: `kernels/scoring/score_prefix.cu`, `score_matching.cu`, `score_benchmark.cu`
 - **Deps**: T02 (types), T21 (mode definitions)
-- [ ] Status
+- [x] Status
 
 ### T29: CUDA Dispatcher
 - **Role**: Systems Architect
 - **Output**: `src/dispatch/dispatcher.hpp`, `src/dispatch/dispatcher.cpp`, `src/dispatch/gpu_device.hpp`, `src/dispatch/gpu_device.cpp`
 - **Deps**: T13 (gpu_memory), T02 (types), T11 (speed_sample), T21 (scoring modes)
-- [ ] Status
+- [x] Status
 
 ---
 
