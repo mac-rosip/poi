@@ -207,25 +207,25 @@
 - **Role**: Integration Engineer
 - **Output**: `src/main.cpp` — parse args, select chain, init dispatcher, run, print results
 - **Deps**: T12 (arg_parser), T29 (dispatcher), T18 (tron), T19 (eth), T20 (solana), T22-T28 (all kernels)
-- [ ] Status
+- [x] Status
 
 ### T31: Unit Tests — Crypto Primitives
 - **Role**: Test Engineer
 - **Output**: `tests/test_mp_uint256.cu`, `tests/test_keccak.cu`, `tests/test_base58.cpp`
 - **Deps**: T03 (mp_uint256), T04 (keccak), T07 (base58), T01 (cmake)
-- [ ] Status
+- [x] Status
 
 ### T32: Unit Tests — Curve Operations
 - **Role**: Test Engineer
 - **Output**: `tests/test_secp256k1.cu`, `tests/test_ed25519.cu`
 - **Deps**: T16 (secp256k1_ops), T17 (ge25519), T01 (cmake)
-- [ ] Status
+- [x] Status
 
 ### T33: Integration Tests — Address Derivation
 - **Role**: Test Engineer
 - **Output**: `tests/test_tron_address.cpp`, `tests/test_solana_address.cpp`, `tests/test_ethereum_address.cpp`
 - **Deps**: T18 (tron), T19 (eth), T20 (solana), T01 (cmake)
-- [ ] Status
+- [x] Status
 
 ---
 
