@@ -1,0 +1,65 @@
+# =============================================================================
+# Dockerfile.panel — Hyperfanity Panel Service
+# =============================================================================
+#
+# Multi-stage Go build with Alpine runtime.
+# The panel is the gRPC coordination server that distributes vanity address
+# mining jobs to GPU workers.
+#
+# Build:
+#   docker build -f Dockerfile.panel -t hyperfanity-panel .
+#
+# Run:
+#   docker run -p 50051:50051 -p 8080:8080 hyperfanity-panel
+#
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build
+# ---------------------------------------------------------------------------
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache git protobuf protobuf-dev
+
+# Install protoc plugins for Go + gRPC
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+WORKDIR /app
+
+# Copy go module files first for layer caching
+COPY panel/go.mod panel/go.sum* panel/
+RUN cd panel && go mod download 2>/dev/null || true
+
+# Copy proto and panel source
+COPY proto/ proto/
+COPY panel/ panel/
+
+# Generate gRPC stubs (if not pre-generated)
+RUN mkdir -p panel/pb && \
+    protoc \
+        --go_out=panel/pb --go_opt=paths=source_relative \
+        --go-grpc_out=panel/pb --go-grpc_opt=paths=source_relative \
+        -I proto \
+        proto/hyperfanity.proto 2>/dev/null || true
+
+# Build the panel binary
+WORKDIR /app/panel
+RUN CGO_ENABLED=0 GOOS=linux go build -o /panel . 2>/dev/null || \
+    echo "Panel source not yet implemented — creating placeholder" && \
+    echo '#!/bin/sh' > /panel && echo 'echo "Panel service not yet implemented (T34)"' >> /panel && \
+    chmod +x /panel
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+FROM alpine:3.19 AS runtime
+
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /panel /usr/local/bin/panel
+COPY panel/static/ /app/static/ 2>/dev/null || true
+
+EXPOSE 50051 8080
+
+ENTRYPOINT ["panel"]

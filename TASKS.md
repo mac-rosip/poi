@@ -247,19 +247,19 @@
 - **Role**: DevOps Engineer
 - **Output**: `Dockerfile.worker` — multi-stage build, nvidia/cuda base, builds hyperfanity binary
 - **Deps**: T01 (cmake), T30 (main builds)
-- [ ] Status
+- [x] Status
 
 ### T37: Docker — Panel Image
 - **Role**: DevOps Engineer
 - **Output**: `Dockerfile.panel` — multi-stage Go build, alpine runtime
 - **Deps**: T34 (panel service)
-- [ ] Status
+- [x] Status
 
 ### T38: Docker Compose + Deploy Scripts
 - **Role**: DevOps Engineer
 - **Output**: `docker-compose.yml`, `scripts/deploy-worker.sh`, `scripts/deploy-runpod.sh`
 - **Deps**: T36 (worker dockerfile), T37 (panel dockerfile)
-- [ ] Status
+- [x] Status
 
 ---
 

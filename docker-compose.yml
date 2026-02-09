@@ -1,0 +1,68 @@
+# =============================================================================
+# docker-compose.yml — Hyperfanity Stack
+# =============================================================================
+#
+# Services:
+#   panel   — gRPC coordination server (Go)
+#   worker  — CUDA vanity address miner (C++)
+#
+# Usage:
+#   docker compose up panel                           # Start panel only
+#   docker compose run --gpus all worker --chain btc --prefix dead
+#   docker compose up                                 # Start everything
+#
+# For testing:
+#   docker compose run --gpus all test
+#
+# =============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # Panel — gRPC job coordinator + web UI
+  # --------------------------------------------------------------------------
+  panel:
+    build:
+      context: .
+      dockerfile: Dockerfile.panel
+    ports:
+      - "50051:50051"   # gRPC
+      - "8080:8080"     # Web UI
+    restart: unless-stopped
+    environment:
+      - PANEL_PORT=50051
+      - WEB_PORT=8080
+
+  # --------------------------------------------------------------------------
+  # Worker — CUDA vanity miner (standalone mode)
+  # --------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Override CMD for standalone mining:
+    # docker compose run worker --chain btc --prefix dead
+    # Or for worker mode (connecting to panel):
+    # docker compose run worker --worker --panel panel:50051
+
+  # --------------------------------------------------------------------------
+  # Test runner — build + run all unit/integration tests
+  # --------------------------------------------------------------------------
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      target: test
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
