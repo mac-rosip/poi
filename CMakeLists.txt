@@ -20,6 +20,7 @@ add_library(hyperfanity_kernels STATIC
     kernels/secp256k1/secp256k1_init.cu
     kernels/secp256k1/secp256k1_inverse.cu
     kernels/secp256k1/secp256k1_iterate.cu
+    kernels/secp256k1/secp256k1_iterate_bitcoin.cu
     kernels/ed25519/ed25519_keygen.cu
     kernels/ed25519/ed25519_inverse.cu
     kernels/ed25519/ed25519_iterate.cu
@@ -49,6 +50,7 @@ add_library(hyperfanity_lib STATIC
     src/chain/tron.cpp
     src/chain/solana.cpp
     src/chain/ethereum.cpp
+    src/chain/bitcoin.cpp
     src/chain/base58.cpp
     src/scoring/mode.cpp
     src/dispatch/dispatcher.cpp
@@ -113,6 +115,7 @@ if(BUILD_TESTS)
             test_tron_address:tests/test_tron_address.cpp
             test_solana_address:tests/test_solana_address.cpp
             test_ethereum_address:tests/test_ethereum_address.cpp
+            test_bitcoin_address:tests/test_bitcoin_address.cpp
         )
 
         foreach(entry IN LISTS CXX_TESTS)

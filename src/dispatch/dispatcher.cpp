@@ -13,6 +13,11 @@ extern "C" void secp256k1_iterate_launch(
     uint8_t* d_hash_out, uint32_t num_points,
     uint32_t iterations, cudaStream_t stream);
 
+extern "C" void secp256k1_iterate_bitcoin_launch(
+    void* d_points_x, void* d_points_y,
+    uint8_t* d_hash_out, uint32_t num_points,
+    uint32_t iterations, cudaStream_t stream);
+
 extern "C" void ed25519_keygen_launch(
     const uint8_t* d_seeds, uint8_t* d_pubkeys,
     uint8_t* d_priv_seeds, uint32_t num_keys, cudaStream_t stream);
@@ -176,15 +181,26 @@ VanityResult Dispatcher::run_secp256k1(ProgressCallback progress_cb) {
             auto& state = secp_states_[d];
             devices_[d].set_current();
 
-            // Launch iterate kernel
-            secp256k1_iterate_launch(
-                state.d_points_x->get(),
-                state.d_points_y->get(),
-                static_cast<uint8_t*>(state.d_hashes->get()),
-                state.num_points,
-                config_.iterations_per_launch,
-                state.stream
-            );
+            // Launch iterate kernel (Bitcoin uses compressed pubkey + HASH160)
+            if (config_.chain == ChainType::BITCOIN) {
+                secp256k1_iterate_bitcoin_launch(
+                    state.d_points_x->get(),
+                    state.d_points_y->get(),
+                    static_cast<uint8_t*>(state.d_hashes->get()),
+                    state.num_points,
+                    config_.iterations_per_launch,
+                    state.stream
+                );
+            } else {
+                secp256k1_iterate_launch(
+                    state.d_points_x->get(),
+                    state.d_points_y->get(),
+                    static_cast<uint8_t*>(state.d_hashes->get()),
+                    state.num_points,
+                    config_.iterations_per_launch,
+                    state.stream
+                );
+            }
 
             cudaStreamSynchronize(state.stream);
 

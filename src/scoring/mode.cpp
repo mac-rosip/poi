@@ -34,6 +34,11 @@ uint32_t score_address(const std::string& address, const ScoringConfig& config) 
             // No prefix to skip
             addr_body = address;
             break;
+        case ChainType::BITCOIN:
+            // Skip "bc1q" prefix (4 chars) -- all P2WPKH addresses share this
+            addr_body = (address.size() > 4 && address.substr(0, 4) == "bc1q")
+                ? address.substr(4) : address;
+            break;
     }
 
     std::string pat = config.pattern;

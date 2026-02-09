@@ -39,6 +39,7 @@ enum class ChainType : uint8_t {
     TRON = 0,
     ETHEREUM = 1,
     SOLANA = 2,
+    BITCOIN = 3,
 };
 
 // Curve types

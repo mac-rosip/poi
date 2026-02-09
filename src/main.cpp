@@ -3,10 +3,10 @@
 // =============================================================================
 //
 // Usage:
-//   hyperfanity --chain <trx|eth|sol> --prefix <pattern> [options]
+//   hyperfanity --chain <trx|eth|sol|btc> --prefix <pattern> [options]
 //
 // Options:
-//   --chain <trx|eth|sol>   Target blockchain (required unless --benchmark)
+//   --chain <trx|eth|sol|btc>  Target blockchain (required unless --benchmark)
 //   --prefix <pattern>      Vanity prefix to match
 //   --suffix <pattern>      Vanity suffix to match
 //   --contains <pattern>    Match pattern anywhere in address
@@ -19,6 +19,7 @@
 //   hyperfanity --chain eth --prefix dead
 //   hyperfanity --chain trx --suffix 8888
 //   hyperfanity --chain sol --prefix Abc
+//   hyperfanity --chain btc --prefix dead
 //   hyperfanity --benchmark --chain eth
 //
 // =============================================================================
@@ -58,13 +59,13 @@ static void print_banner() {
  |_| |_|\__, | .__/ \___|_|  |_|  \__,_|_| |_|_|\__|\__, |
         |___/|_|                                      |___/
 )" << std::endl;
-    std::cout << "  CUDA Vanity Address Generator — TRX / ETH / SOL\n" << std::endl;
+    std::cout << "  CUDA Vanity Address Generator — TRX / ETH / SOL / BTC\n" << std::endl;
 }
 
 static void print_usage() {
-    std::cout << "Usage: hyperfanity --chain <trx|eth|sol> --prefix <pattern> [options]\n\n"
+    std::cout << "Usage: hyperfanity --chain <trx|eth|sol|btc> --prefix <pattern> [options]\n\n"
               << "Options:\n"
-              << "  --chain <trx|eth|sol>   Target blockchain\n"
+              << "  --chain <trx|eth|sol|btc>  Target blockchain\n"
               << "  --prefix <pattern>      Vanity prefix to match\n"
               << "  --suffix <pattern>      Vanity suffix to match\n"
               << "  --contains <pattern>    Match pattern anywhere\n"
@@ -82,7 +83,8 @@ static ChainType parse_chain(const std::string& s) {
     if (lower == "trx" || lower == "tron")     return ChainType::TRON;
     if (lower == "eth" || lower == "ethereum") return ChainType::ETHEREUM;
     if (lower == "sol" || lower == "solana")   return ChainType::SOLANA;
-    throw std::runtime_error("Unknown chain: " + s + " (use trx, eth, or sol)");
+    if (lower == "btc" || lower == "bitcoin") return ChainType::BITCOIN;
+    throw std::runtime_error("Unknown chain: " + s + " (use trx, eth, sol, or btc)");
 }
 
 static std::vector<int> parse_devices(const std::string& s) {
@@ -100,6 +102,7 @@ static const char* chain_name(ChainType chain) {
         case ChainType::TRON:     return "TRX";
         case ChainType::ETHEREUM: return "ETH";
         case ChainType::SOLANA:   return "SOL";
+        case ChainType::BITCOIN:  return "BTC";
         default:                  return "???";
     }
 }
@@ -128,7 +131,7 @@ int main(int argc, char* argv[]) {
         if (args.has_option("--chain")) {
             chain = parse_chain(args.get_option("--chain"));
         } else if (!benchmark) {
-            std::cerr << "[!] Error: --chain is required (use trx, eth, or sol)\n";
+            std::cerr << "[!] Error: --chain is required (use trx, eth, sol, or btc)\n";
             return 1;
         }
 
@@ -153,8 +156,9 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Case sensitivity: ETH hex is case-insensitive, TRX/SOL Base58 is case-sensitive
-        scoring_config.case_sensitive = (chain != ChainType::ETHEREUM);
+        // Case sensitivity: ETH hex and BTC bech32 are case-insensitive,
+        // TRX/SOL Base58 is case-sensitive
+        scoring_config.case_sensitive = (chain != ChainType::ETHEREUM && chain != ChainType::BITCOIN);
 
         // Min score
         if (args.has_option("--min-score")) {

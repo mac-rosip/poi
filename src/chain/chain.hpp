@@ -10,6 +10,7 @@
 // TRX:  20-byte hash → Base58Check "T..." address
 // ETH:  20-byte hash → EIP-55 checksummed "0x..." address
 // SOL:  32-byte pubkey → Base58 address
+// BTC:  20-byte HASH160 → bech32 "bc1q..." address
 // =============================================================================
 
 #include <string>
@@ -24,6 +25,7 @@ namespace chain {
 std::string tron_address_from_hash(const uint8_t hash[20]);
 std::string ethereum_address_from_hash(const uint8_t hash[20]);
 std::string solana_address_from_pubkey(const uint8_t pubkey[32]);
+std::string bitcoin_address_from_hash(const uint8_t hash[20]);
 
 // Unified address encoding dispatch
 inline std::string encode_address(ChainType chain, const uint8_t* data) {
@@ -34,6 +36,8 @@ inline std::string encode_address(ChainType chain, const uint8_t* data) {
             return ethereum_address_from_hash(data);
         case ChainType::SOLANA:
             return solana_address_from_pubkey(data);
+        case ChainType::BITCOIN:
+            return bitcoin_address_from_hash(data);
         default:
             return "";
     }
