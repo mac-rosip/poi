@@ -21,7 +21,7 @@ def double_sha256(data):
 def verify_trx_address(address):
     """Verify TRX address (base58 with checksum)."""
     try:
-        decoded = base58.b58decode(address)
+        decoded = base58.b58decode(address) 
         if len(decoded) != 25:
             return False
         data = decoded[:-4]
