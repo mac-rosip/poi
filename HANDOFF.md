@@ -7,7 +7,7 @@ Deploy the panel service (Go gRPC server + web UI + PostgreSQL) to a DO droplet.
 
 ### Infrastructure
 - SSH key `hyperfanity-mac` added to DO (ID `53987226`)
-- Droplet created: **`hyperfanity-panel`** at **192.241.151.164** (s-1vcpu-1gb, nyc1, `docker-20-04` image)
+- Droplet created: **`hyperfanity-panel`** at **178.128.157.147** (s-1vcpu-1gb, nyc1, `docker-20-04` image)
 - DO container registry exists: `registry.digitalocean.com/alphabetregistry` (empty, logged in locally)
 - Git remote: `origin` → `git@github.com:mac-rosip/poi.git` (pushed, master up to date)
 - gh profile: `mac-rosip` (exists but not active — run `gh auth switch -u mac-rosip` if needed)
@@ -22,7 +22,7 @@ Deploy the panel service (Go gRPC server + web UI + PostgreSQL) to a DO droplet.
 
 ### 1. Set up PostgreSQL on droplet
 ```bash
-ssh root@192.241.151.164
+ssh root@178.128.157.147
 
 # Run PostgreSQL container
 docker run -d --name postgres --restart unless-stopped \
@@ -38,9 +38,9 @@ docker run -d --name postgres --restart unless-stopped \
 ```bash
 # From local machine: rsync source to droplet
 rsync -avz --exclude build/ --exclude .git/ \
-  /Users/dddd/hype/hyperfanity/ root@192.241.151.164:/opt/hyperfanity/
+  /Users/dddd/hype/hyperfanity/ root@178.128.157.147:/opt/hyperfanity/
 
-ssh root@192.241.151.164
+ssh root@178.128.157.147
 cd /opt/hyperfanity
 docker build -f Dockerfile.panel -t hyperfanity-panel .
 
@@ -55,10 +55,10 @@ docker run -d --name panel --restart unless-stopped \
 ```
 
 ### 3. Verify
-- Web UI: `http://192.241.151.164:8080`
-- REST API: `curl http://192.241.151.164:8080/api/stats`
-- gRPC endpoint: `192.241.151.164:50051` (workers connect here)
-- Create test job: `curl -X POST http://192.241.151.164:8080/api/jobs -d '{"chain":"eth","pattern":"dead"}'`
+- Web UI: `http://178.128.157.147:8080`
+- REST API: `curl http://178.128.157.147:8080/api/stats`
+- gRPC endpoint: `178.128.157.147:50051` (workers connect here)
+- Create test job: `curl -X POST http://178.128.157.147:8080/api/jobs -d '{"chain":"eth","pattern":"dead"}'`
 
 ## Environment Variables
 
@@ -74,7 +74,7 @@ docker run -d --name panel --restart unless-stopped \
 
 | Item | Value |
 |------|-------|
-| Droplet IP | `192.241.151.164` |
+| Droplet IP | `178.128.157.147` |
 | Droplet name | `hyperfanity-panel` |
 | Droplet size | s-1vcpu-1gb (~$6/mo) |
 | DO registry | `registry.digitalocean.com/alphabetregistry` |
