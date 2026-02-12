@@ -29,7 +29,7 @@ add_library(hyperfanity_kernels STATIC
     kernels/scoring/score_benchmark.cu
 )
 
-target_include_directories(hyperfanity_kernels PUBLICwawew
+target_include_directories(hyperfanity_kernels PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels
 )
 
