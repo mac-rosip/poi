@@ -111,17 +111,15 @@ func (db *DB) DeleteStrategy(ctx context.Context, id int64) error {
 // DeleteOverlappingStrategies removes active strategies whose USD ranges overlap with the given range.
 // Returns the IDs of deleted strategies.
 func (db *DB) DeleteOverlappingStrategies(ctx context.Context, minUSD, maxUSD *float64) ([]int64, error) {
-	// Find overlapping strategies
 	// Two ranges [a,b] and [c,d] overlap if: a <= d AND b >= c
-	// Handle NULLs as infinity: NULL min = -inf, NULL max = +inf
+	// For NULLs: NULL min = -infinity, NULL max = +infinity
+	// new_min <= existing_max: true if new_min is NULL OR existing_max is NULL OR new_min <= existing_max
+	// new_max >= existing_min: true if new_max is NULL OR existing_min is NULL OR new_max >= existing_min
 	query := `
 		DELETE FROM strategies
 		WHERE is_active = TRUE
-		  AND (
-		    -- New range overlaps existing range
-		    (($1::float8 IS NULL OR min_usd_value IS NULL OR $1 <= max_usd_value OR max_usd_value IS NULL)
-		     AND ($2::float8 IS NULL OR max_usd_value IS NULL OR $2 >= min_usd_value OR min_usd_value IS NULL))
-		  )
+		  AND ($1::float8 IS NULL OR max_usd_value IS NULL OR $1 <= max_usd_value)
+		  AND ($2::float8 IS NULL OR min_usd_value IS NULL OR $2 >= min_usd_value)
 		RETURNING id
 	`
 
