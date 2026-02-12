@@ -164,6 +164,7 @@ func (s *PanelServer) StartHTTP(addr string) error {
 	mux.HandleFunc("/api/jobs", s.handleAPIJobs)
 	mux.HandleFunc("/api/workers", s.handleAPIWorkers)
 	mux.HandleFunc("/api/strategies", s.handleAPIStrategies)
+	mux.HandleFunc("/api/rules", s.handleAPIRules) // Active rules only
 
 	log.Printf("[http] Listening on %s", addr)
 	return http.ListenAndServe(addr, mux)
@@ -411,6 +412,21 @@ func parseRule(rule string) (*float64, *float64, int, int, error) {
 	return minUSD, maxUSD, prefix, suffix, nil
 }
 
+func (s *PanelServer) handleAPIRules(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Return only active strategies (rules)
+	strategies, err := s.db.ListActiveStrategies(ctx)
+	if err != nil {
+		http.Error(w, "failed to list rules", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, strategies)
+}
+
 func (s *PanelServer) handleAPIStrategies(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	switch r.Method {
@@ -462,6 +478,17 @@ func (s *PanelServer) handleAPIStrategies(w http.ResponseWriter, r *http.Request
 		if req.PrefixChars == 0 && req.SuffixChars == 0 {
 			req.PrefixChars = 4 // Default
 		}
+		// Delete overlapping strategies before creating new one
+		deleted, err := s.db.DeleteOverlappingStrategies(ctx, req.MinUSDValue, req.MaxUSDValue)
+		if err != nil {
+			log.Printf("[http] Error deleting overlapping strategies: %v", err)
+			http.Error(w, "failed to delete overlapping strategies", http.StatusInternalServerError)
+			return
+		}
+		if len(deleted) > 0 {
+			log.Printf("[http] Deleted %d overlapping strategies: %v", len(deleted), deleted)
+		}
+
 		strategy := &db.Strategy{
 			Name:        req.Name,
 			IsActive:    req.IsActive,
@@ -480,7 +507,10 @@ func (s *PanelServer) handleAPIStrategies(w http.ResponseWriter, r *http.Request
 		strategy.ID = id
 		log.Printf("[http] Strategy created: %d (%s, prefix=%d, suffix=%d)", id, strategy.Name, strategy.PrefixChars, strategy.SuffixChars)
 		w.WriteHeader(http.StatusCreated)
-		writeJSON(w, strategy)
+		writeJSON(w, map[string]interface{}{
+			"strategy":         strategy,
+			"deleted_strategy_ids": deleted,
+		})
 
 	case http.MethodPut:
 		var req struct {

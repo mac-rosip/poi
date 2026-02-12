@@ -108,6 +108,40 @@ func (db *DB) DeleteStrategy(ctx context.Context, id int64) error {
 	return err
 }
 
+// DeleteOverlappingStrategies removes active strategies whose USD ranges overlap with the given range.
+// Returns the IDs of deleted strategies.
+func (db *DB) DeleteOverlappingStrategies(ctx context.Context, minUSD, maxUSD *float64) ([]int64, error) {
+	// Find overlapping strategies
+	// Two ranges [a,b] and [c,d] overlap if: a <= d AND b >= c
+	// Handle NULLs as infinity: NULL min = -inf, NULL max = +inf
+	query := `
+		DELETE FROM strategies
+		WHERE is_active = TRUE
+		  AND (
+		    -- New range overlaps existing range
+		    (($1::float8 IS NULL OR min_usd_value IS NULL OR $1 <= max_usd_value OR max_usd_value IS NULL)
+		     AND ($2::float8 IS NULL OR max_usd_value IS NULL OR $2 >= min_usd_value OR min_usd_value IS NULL))
+		  )
+		RETURNING id
+	`
+
+	rows, err := db.QueryContext(ctx, query, nullFloat64Ptr(minUSD), nullFloat64Ptr(maxUSD))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deleted []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, id)
+	}
+	return deleted, rows.Err()
+}
+
 // ListStrategies returns all strategies ordered by priority.
 func (db *DB) ListStrategies(ctx context.Context) ([]*Strategy, error) {
 	rows, err := db.QueryContext(ctx, `
