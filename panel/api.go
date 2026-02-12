@@ -270,7 +270,7 @@ func (s *PanelServer) handleAPIJobs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "chain and pattern are required", http.StatusBadRequest)
 			return
 		}
-		validChains := map[string]bool{"trx": true, "eth": true, "sol": true, "btc": true}
+		validChains := map[string]bool{"trx": true, "eth": true, "evm": true, "sol": true, "btc": true}
 		if !validChains[req.Chain] {
 			http.Error(w, "invalid chain (use trx, eth, sol, btc)", http.StatusBadRequest)
 			return
@@ -493,19 +493,14 @@ func chainIDToName(chainID int, blockchain string) string {
 	if blockchain == "TRX" {
 		return "trx"
 	}
+	if blockchain == "EVM" {
+		return "evm"
+	}
 	switch chainID {
-	case 1:
-		return "eth"
-	case 56:
-		return "eth" // BSC uses same address format
-	case 137:
-		return "eth" // Polygon uses same address format
-	case 43114:
-		return "eth" // Avalanche C-Chain
 	case 728126428: // Tron mainnet
 		return "trx"
 	default:
-		return "eth" // Default to ETH format for EVM chains
+		return "evm" // All EVM chains use same address format
 	}
 }
 
