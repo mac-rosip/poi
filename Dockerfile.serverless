@@ -1,0 +1,82 @@
+# =============================================================================
+# Dockerfile.serverless — Hyperfanity RunPod Serverless Worker
+# =============================================================================
+#
+# Multi-stage build:
+#   Stage 1 (builder):  Compile CUDA worker binary
+#   Stage 2 (runtime):  CUDA runtime + Python handler
+#
+# Build:
+#   docker build -f Dockerfile.serverless -t hyperfanity-serverless .
+#
+# Test locally:
+#   docker run --gpus all -e PANEL_ADDR=178.128.157.147:50051 hyperfanity-serverless
+#
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build CUDA worker
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cmake \
+        build-essential \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy source tree
+COPY CMakeLists.txt ./
+COPY kernels/ kernels/
+COPY src/ src/
+COPY proto/ proto/
+
+# Configure and build (skip tests for serverless)
+RUN cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CUDA_ARCHITECTURES="70;75;80;86;89;90" \
+        -DBUILD_TESTS=OFF \
+    && cmake --build build -j$(nproc)
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime (CUDA + Python)
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        python3 \
+        python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy worker binary
+COPY --from=builder /app/build/hyperfanity /usr/local/bin/hyperfanity
+
+# Install Python dependencies
+WORKDIR /app
+COPY serverless/requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Generate Python protobuf stubs
+COPY proto/hyperfanity.proto proto/
+RUN python3 -m grpc_tools.protoc \
+    -I proto \
+    --python_out=. \
+    --grpc_python_out=. \
+    proto/hyperfanity.proto
+
+# Copy handler
+COPY serverless/handler.py .
+
+# Environment
+ENV PANEL_ADDR="178.128.157.147:50051"
+ENV WORKER_BINARY="/usr/local/bin/hyperfanity"
+
+# RunPod serverless entrypoint
+CMD ["python3", "-u", "handler.py"]
