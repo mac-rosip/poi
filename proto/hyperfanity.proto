@@ -45,6 +45,8 @@ message Job {
   uint32 min_score = 5;
   bytes seed_pubkey = 6;
   bool full_keypair_mode = 7;
+  uint32 prefix_chars = 8;  // Number of chars to match from front
+  uint32 suffix_chars = 9;  // Number of chars to match from back
 }
 
 message ProgressUpdate {

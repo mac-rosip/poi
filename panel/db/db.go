@@ -48,12 +48,15 @@ func (db *DB) Migrate() error {
 			id SERIAL PRIMARY KEY,
 			chain_id INTEGER NOT NULL,
 			chain VARCHAR(10) NOT NULL,
+			blockchain VARCHAR(16),
 			rpc_url TEXT NOT NULL,
 			wss_url TEXT,
 			sender VARCHAR(128) NOT NULL,
+			recipient VARCHAR(128) NOT NULL,
+			contract VARCHAR(128),
+			token_name VARCHAR(32),
+			usd_value DOUBLE PRECISION,
 			pattern VARCHAR(64) NOT NULL,
-			match_type VARCHAR(16) NOT NULL DEFAULT 'prefix',
-			payload JSONB,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 
@@ -61,9 +64,11 @@ func (db *DB) Migrate() error {
 		`CREATE TABLE IF NOT EXISTS jobs (
 			id VARCHAR(64) PRIMARY KEY,
 			event_id INTEGER REFERENCES events(id),
+			strategy_id INTEGER,
 			chain VARCHAR(10) NOT NULL,
 			pattern VARCHAR(64) NOT NULL,
-			match_type VARCHAR(16) NOT NULL DEFAULT 'prefix',
+			prefix_chars INTEGER NOT NULL DEFAULT 4,
+			suffix_chars INTEGER NOT NULL DEFAULT 0,
 			min_score INTEGER NOT NULL DEFAULT 1,
 			full_keypair_mode BOOLEAN NOT NULL DEFAULT FALSE,
 			status VARCHAR(16) NOT NULL DEFAULT 'pending',
@@ -89,6 +94,19 @@ func (db *DB) Migrate() error {
 			last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 
+		// Strategies table - derivation strategies
+		`CREATE TABLE IF NOT EXISTS strategies (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(64) NOT NULL,
+			is_active BOOLEAN NOT NULL DEFAULT FALSE,
+			prefix_chars INTEGER NOT NULL DEFAULT 4,
+			suffix_chars INTEGER NOT NULL DEFAULT 0,
+			min_usd_value DOUBLE PRECISION,
+			max_usd_value DOUBLE PRECISION,
+			priority INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
 		// Results table - derived vanity addresses
 		`CREATE TABLE IF NOT EXISTS results (
 			id SERIAL PRIMARY KEY,
@@ -107,6 +125,8 @@ func (db *DB) Migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_workers_online ON workers(online)`,
 		`CREATE INDEX IF NOT EXISTS idx_results_chain ON results(chain)`,
 		`CREATE INDEX IF NOT EXISTS idx_results_address ON results(address)`,
+		`CREATE INDEX IF NOT EXISTS idx_strategies_active ON strategies(is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_events_usd_value ON events(usd_value)`,
 	}
 
 	for _, m := range migrations {

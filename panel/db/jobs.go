@@ -21,9 +21,11 @@ const (
 type Job struct {
 	ID              string    `json:"id"`
 	EventID         *int64    `json:"event_id,omitempty"`
+	StrategyID      *int64    `json:"strategy_id,omitempty"`
 	Chain           string    `json:"chain"`
 	Pattern         string    `json:"pattern"`
-	MatchType       string    `json:"match_type"`
+	PrefixChars     int       `json:"prefix_chars"`
+	SuffixChars     int       `json:"suffix_chars"`
 	MinScore        int       `json:"min_score"`
 	FullKeypairMode bool      `json:"full_keypair_mode"`
 	Status          JobStatus `json:"status"`
@@ -46,34 +48,37 @@ func (db *DB) CreateJob(ctx context.Context, j *Job) error {
 	if j.Status == "" {
 		j.Status = JobStatusPending
 	}
-	if j.MatchType == "" {
-		j.MatchType = "prefix"
+	if j.PrefixChars == 0 && j.SuffixChars == 0 {
+		j.PrefixChars = 4 // Default
 	}
 	if j.MinScore == 0 {
-		j.MinScore = len(j.Pattern)
+		j.MinScore = j.PrefixChars + j.SuffixChars
 	}
 
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO jobs (id, event_id, chain, pattern, match_type, min_score, full_keypair_mode, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, j.ID, j.EventID, j.Chain, j.Pattern, j.MatchType, j.MinScore, j.FullKeypairMode, j.Status)
+		INSERT INTO jobs (id, event_id, strategy_id, chain, pattern, prefix_chars, suffix_chars, min_score, full_keypair_mode, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, j.ID, j.EventID, j.StrategyID, j.Chain, j.Pattern, j.PrefixChars, j.SuffixChars, j.MinScore, j.FullKeypairMode, j.Status)
 	return err
 }
 
 // GetJob retrieves a job by ID.
 func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	j := &Job{}
-	var eventID sql.NullInt64
+	var eventID, strategyID sql.NullInt64
 	var assignedWorker sql.NullString
 	err := db.QueryRowContext(ctx, `
-		SELECT id, event_id, chain, pattern, match_type, min_score, full_keypair_mode, status, assigned_worker, created_at, updated_at
+		SELECT id, event_id, strategy_id, chain, pattern, prefix_chars, suffix_chars, min_score, full_keypair_mode, status, assigned_worker, created_at, updated_at
 		FROM jobs WHERE id = $1
-	`, id).Scan(&j.ID, &eventID, &j.Chain, &j.Pattern, &j.MatchType, &j.MinScore, &j.FullKeypairMode, &j.Status, &assignedWorker, &j.CreatedAt, &j.UpdatedAt)
+	`, id).Scan(&j.ID, &eventID, &strategyID, &j.Chain, &j.Pattern, &j.PrefixChars, &j.SuffixChars, &j.MinScore, &j.FullKeypairMode, &j.Status, &assignedWorker, &j.CreatedAt, &j.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if eventID.Valid {
 		j.EventID = &eventID.Int64
+	}
+	if strategyID.Valid {
+		j.StrategyID = &strategyID.Int64
 	}
 	if assignedWorker.Valid {
 		j.AssignedWorker = assignedWorker.String
@@ -91,7 +96,7 @@ func (db *DB) GetNextPendingJob(ctx context.Context, workerID string, supportedC
 
 	// Build query with optional chain filter
 	query := `
-		SELECT id, event_id, chain, pattern, match_type, min_score, full_keypair_mode, status, created_at, updated_at
+		SELECT id, event_id, strategy_id, chain, pattern, prefix_chars, suffix_chars, min_score, full_keypair_mode, status, created_at, updated_at
 		FROM jobs
 		WHERE status = 'pending'
 	`
@@ -105,9 +110,9 @@ func (db *DB) GetNextPendingJob(ctx context.Context, workerID string, supportedC
 	query += ` ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED`
 
 	j := &Job{}
-	var eventID sql.NullInt64
+	var eventID, strategyID sql.NullInt64
 	err = tx.QueryRowContext(ctx, query, args...).Scan(
-		&j.ID, &eventID, &j.Chain, &j.Pattern, &j.MatchType, &j.MinScore, &j.FullKeypairMode, &j.Status, &j.CreatedAt, &j.UpdatedAt,
+		&j.ID, &eventID, &strategyID, &j.Chain, &j.Pattern, &j.PrefixChars, &j.SuffixChars, &j.MinScore, &j.FullKeypairMode, &j.Status, &j.CreatedAt, &j.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -117,6 +122,9 @@ func (db *DB) GetNextPendingJob(ctx context.Context, workerID string, supportedC
 	}
 	if eventID.Valid {
 		j.EventID = &eventID.Int64
+	}
+	if strategyID.Valid {
+		j.StrategyID = &strategyID.Int64
 	}
 
 	// Assign to worker
@@ -170,7 +178,7 @@ func (db *DB) DeleteJob(ctx context.Context, id string) error {
 // ListJobs returns all jobs ordered by creation time.
 func (db *DB) ListJobs(ctx context.Context) ([]*Job, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, event_id, chain, pattern, match_type, min_score, full_keypair_mode, status, assigned_worker, created_at, updated_at
+		SELECT id, event_id, strategy_id, chain, pattern, prefix_chars, suffix_chars, min_score, full_keypair_mode, status, assigned_worker, created_at, updated_at
 		FROM jobs ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -181,13 +189,16 @@ func (db *DB) ListJobs(ctx context.Context) ([]*Job, error) {
 	var jobs []*Job
 	for rows.Next() {
 		j := &Job{}
-		var eventID sql.NullInt64
+		var eventID, strategyID sql.NullInt64
 		var assignedWorker sql.NullString
-		if err := rows.Scan(&j.ID, &eventID, &j.Chain, &j.Pattern, &j.MatchType, &j.MinScore, &j.FullKeypairMode, &j.Status, &assignedWorker, &j.CreatedAt, &j.UpdatedAt); err != nil {
+		if err := rows.Scan(&j.ID, &eventID, &strategyID, &j.Chain, &j.Pattern, &j.PrefixChars, &j.SuffixChars, &j.MinScore, &j.FullKeypairMode, &j.Status, &assignedWorker, &j.CreatedAt, &j.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if eventID.Valid {
 			j.EventID = &eventID.Int64
+		}
+		if strategyID.Valid {
+			j.StrategyID = &strategyID.Int64
 		}
 		if assignedWorker.Valid {
 			j.AssignedWorker = assignedWorker.String
