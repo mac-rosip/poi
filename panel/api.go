@@ -357,6 +357,60 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 // Strategies API
 // =============================================================================
 
+// parseRule parses a simple rule syntax:
+// "if USD > 25000 and USD < 50000 then DERIVE 3,3"
+// "if USD > 50000 then DERIVE 4,4"
+// "if USD < 1000 then DERIVE 2,0"
+// Returns: minUSD, maxUSD, prefixChars, suffixChars, error
+func parseRule(rule string) (*float64, *float64, int, int, error) {
+	rule = strings.ToLower(strings.TrimSpace(rule))
+
+	// Extract DERIVE part
+	parts := strings.Split(rule, "then derive")
+	if len(parts) != 2 {
+		return nil, nil, 0, 0, fmt.Errorf("invalid syntax: expected 'then DERIVE X,Y'")
+	}
+
+	// Parse derive values (e.g., "3,3" or "4,0")
+	deriveStr := strings.TrimSpace(parts[1])
+	var prefix, suffix int
+	if _, err := fmt.Sscanf(deriveStr, "%d,%d", &prefix, &suffix); err != nil {
+		// Try single value (prefix only)
+		if _, err := fmt.Sscanf(deriveStr, "%d", &prefix); err != nil {
+			return nil, nil, 0, 0, fmt.Errorf("invalid DERIVE format: use 'DERIVE 3,3' or 'DERIVE 4'")
+		}
+	}
+
+	// Parse conditions
+	condPart := strings.TrimPrefix(strings.TrimSpace(parts[0]), "if ")
+	var minUSD, maxUSD *float64
+
+	// Handle "and" conditions
+	conditions := strings.Split(condPart, " and ")
+	for _, cond := range conditions {
+		cond = strings.TrimSpace(cond)
+		if cond == "" {
+			continue
+		}
+
+		var val float64
+		// Try different patterns
+		if n, _ := fmt.Sscanf(cond, "usd > %f", &val); n == 1 {
+			minUSD = &val
+		} else if n, _ := fmt.Sscanf(cond, "usd >= %f", &val); n == 1 {
+			minUSD = &val
+		} else if n, _ := fmt.Sscanf(cond, "usd < %f", &val); n == 1 {
+			maxUSD = &val
+		} else if n, _ := fmt.Sscanf(cond, "usd <= %f", &val); n == 1 {
+			maxUSD = &val
+		} else {
+			return nil, nil, 0, 0, fmt.Errorf("invalid condition: %s (use 'USD > X' or 'USD < X')")
+		}
+	}
+
+	return minUSD, maxUSD, prefix, suffix, nil
+}
+
 func (s *PanelServer) handleAPIStrategies(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	switch r.Method {
@@ -370,6 +424,7 @@ func (s *PanelServer) handleAPIStrategies(w http.ResponseWriter, r *http.Request
 
 	case http.MethodPost:
 		var req struct {
+			Rule        string   `json:"rule"` // Simple syntax: "if USD > 25000 and USD < 50000 then DERIVE 3,3"
 			Name        string   `json:"name"`
 			IsActive    bool     `json:"is_active"`
 			PrefixChars int      `json:"prefix_chars"`
@@ -382,8 +437,26 @@ func (s *PanelServer) handleAPIStrategies(w http.ResponseWriter, r *http.Request
 			http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		// If rule syntax provided, parse it
+		if req.Rule != "" {
+			minUSD, maxUSD, prefix, suffix, err := parseRule(req.Rule)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			req.MinUSDValue = minUSD
+			req.MaxUSDValue = maxUSD
+			req.PrefixChars = prefix
+			req.SuffixChars = suffix
+			if req.Name == "" {
+				req.Name = req.Rule // Use rule as name if not provided
+			}
+			req.IsActive = true // Rules are active by default
+		}
+
 		if req.Name == "" {
-			http.Error(w, "name is required", http.StatusBadRequest)
+			http.Error(w, "name or rule is required", http.StatusBadRequest)
 			return
 		}
 		if req.PrefixChars == 0 && req.SuffixChars == 0 {
