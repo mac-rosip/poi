@@ -32,7 +32,7 @@ COPY panel/ panel/
 
 # Build the panel binary
 WORKDIR /app/panel
-RUN CGO_ENABLED=0 GOOS=linux go build -o /panel .
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /panel .
 
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime
