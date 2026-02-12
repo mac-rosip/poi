@@ -3,6 +3,7 @@
 #include <vector>
 #include <array>
 #include <cstdint>
+#include <cstddef>
 
 namespace crypto {
 

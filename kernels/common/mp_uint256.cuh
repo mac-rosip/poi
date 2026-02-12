@@ -20,10 +20,16 @@
 #define MP_WORDS 8
 
 // -----------------------------------------------------------------------------
-// Core type
+// Core types
 // -----------------------------------------------------------------------------
 struct mp_number {
     uint32_t d[MP_WORDS];
+};
+
+// secp256k1 elliptic curve point (affine coordinates)
+struct secp256k1_point {
+    mp_number x;
+    mp_number y;
 };
 
 // -----------------------------------------------------------------------------
@@ -146,6 +152,51 @@ __device__ __forceinline__ void mp_mod_add(mp_number &r, const mp_number &a, con
 }
 
 // =============================================================================
+// Utility: mp_is_zero -- Check if number is zero
+// =============================================================================
+__device__ __forceinline__ int mp_is_zero(const mp_number &a) {
+    uint32_t acc = 0;
+    #pragma unroll
+    for (int i = 0; i < MP_WORDS; ++i) {
+        acc |= a.d[i];
+    }
+    return acc == 0;
+}
+
+// =============================================================================
+// Utility: mp_copy -- Copy one mp_number to another
+// =============================================================================
+__device__ __forceinline__ void mp_copy(mp_number &dst, const mp_number &src) {
+    #pragma unroll
+    for (int i = 0; i < MP_WORDS; ++i) {
+        dst.d[i] = src.d[i];
+    }
+}
+
+// =============================================================================
+// Utility: mp_set_ui -- Set mp_number from a single uint32_t value
+// =============================================================================
+__device__ __forceinline__ void mp_set_ui(mp_number &r, uint32_t val) {
+    r.d[0] = val;
+    #pragma unroll
+    for (int i = 1; i < MP_WORDS; ++i) {
+        r.d[i] = 0;
+    }
+}
+
+// =============================================================================
+// Utility: mp_cmp -- Compare two numbers: -1 if a < b, 0 if equal, 1 if a > b
+// =============================================================================
+__device__ __forceinline__ int mp_cmp(const mp_number &a, const mp_number &b) {
+    #pragma unroll
+    for (int i = MP_WORDS - 1; i >= 0; --i) {
+        if (a.d[i] > b.d[i]) return 1;
+        if (a.d[i] < b.d[i]) return -1;
+    }
+    return 0;
+}
+
+// =============================================================================
 // 6. mp_mul — Full 256x256→512 multiplication, store lower 256 bits in r.
 //    r = (a * b) mod 2^256
 // =============================================================================
@@ -243,6 +294,9 @@ __device__ __forceinline__ uint32_t mp_reduce_hi(mp_number &r, const mp_number &
     return overflow1 + carry2; // Total overflow
 }
 
+// Forward declaration for mp_mod_sqr (used in mp_mod_inverse)
+__device__ __forceinline__ void mp_mod_sqr(mp_number &r, const mp_number &a);
+
 // =============================================================================
 // 7. mp_mod_mul — Modular multiplication: r = (a * b) mod p
 //    Uses efficient reduction for secp256k1.
@@ -307,53 +361,8 @@ __device__ __forceinline__ void mp_mod_inverse(mp_number &r, const mp_number &a)
 }
 
 // =============================================================================
-// 9. mp_is_zero — Check if number is zero
-// =============================================================================
-__device__ __forceinline__ int mp_is_zero(const mp_number &a) {
-    uint32_t acc = 0;
-    #pragma unroll
-    for (int i = 0; i < MP_WORDS; ++i) {
-        acc |= a.d[i];
-    }
-    return acc == 0;
-}
-
-// =============================================================================
-// 10. mp_cmp — Compare two numbers: -1 if a < b, 0 if equal, 1 if a > b
-// =============================================================================
-__device__ __forceinline__ int mp_cmp(const mp_number &a, const mp_number &b) {
-    #pragma unroll
-    for (int i = MP_WORDS - 1; i >= 0; --i) {
-        if (a.d[i] > b.d[i]) return 1;
-        if (a.d[i] < b.d[i]) return -1;
-    }
-    return 0;
-}
-
-// =============================================================================
 // Utility: mp_mod_sqr -- Square a number modulo p
 // =============================================================================
 __device__ __forceinline__ void mp_mod_sqr(mp_number &r, const mp_number &a) {
     mp_mod_mul(r, a, a);
-}
-
-// =============================================================================
-// Utility: mp_copy -- Copy one mp_number to another
-// =============================================================================
-__device__ __forceinline__ void mp_copy(mp_number &dst, const mp_number &src) {
-    #pragma unroll
-    for (int i = 0; i < MP_WORDS; ++i) {
-        dst.d[i] = src.d[i];
-    }
-}
-
-// =============================================================================
-// Utility: mp_set_ui -- Set mp_number from a single uint32_t value
-// =============================================================================
-__device__ __forceinline__ void mp_set_ui(mp_number &r, uint32_t val) {
-    r.d[0] = val;
-    #pragma unroll
-    for (int i = 1; i < MP_WORDS; ++i) {
-        r.d[i] = 0;
-    }
 }

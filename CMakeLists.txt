@@ -47,6 +47,7 @@ target_compile_options(hyperfanity_kernels PRIVATE
 # ===========================================================================
 add_library(hyperfanity_lib STATIC
     src/speed_sample.cpp
+    src/arg_parser.cpp
     src/chain/tron.cpp
     src/chain/solana.cpp
     src/chain/ethereum.cpp
@@ -55,6 +56,7 @@ add_library(hyperfanity_lib STATIC
     src/scoring/mode.cpp
     src/dispatch/dispatcher.cpp
     src/dispatch/gpu_device.cpp
+    src/dispatch/gpu_memory.cpp
     src/crypto/sha256.cpp
     src/crypto/sha512.cpp
 )

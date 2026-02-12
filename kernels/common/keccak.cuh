@@ -55,6 +55,11 @@ __device__ __constant__ int keccak_rho_offsets[25] = {
     18, 2, 61, 56, 14
 };
 
+// Pi permutation for rho/pi (defined before sha3_keccakf which uses it)
+__device__ __constant__ int keccak_pi[24] = {
+    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1
+};
+
 // =============================================================================
 // sha3_keccakf — Keccak-f[1600] permutation
 // =============================================================================
@@ -108,10 +113,6 @@ __device__ __forceinline__ void sha3_keccakf(uint64_t state[KECCAK_STATE_SIZE]) 
     }
 }
 
-// Pi permutation for rho/pi
-__device__ __constant__ int keccak_pi[24] = {
-    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1
-};
 
 // =============================================================================
 // keccak256 — General Keccak-256 hash (Ethereum variant with 0x01 padding)

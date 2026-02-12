@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cstdio>
 #include <chrono>
+#include <stdexcept>
 
 // External kernel launch functions
 extern "C" void secp256k1_init_precomp();

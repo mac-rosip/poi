@@ -19,12 +19,13 @@
 // Dependencies: ge25519.cuh, sha512.cuh, ed25519_precomp.cuh
 // =============================================================================
 
-#include "ed25519_precomp.cuh"
 #include "ge25519.cuh"
 #include "sha512.cuh"
 #include <cstdint>
 
 // Define the precomp table in constant memory
+// Note: This is the actual definition; ed25519_precomp.cuh has the extern declaration
+#define ED25519_PRECOMP_SIZE 256
 __device__ __constant__ ge25519_niels d_ed25519_precomp[ED25519_PRECOMP_SIZE];
 
 // =============================================================================

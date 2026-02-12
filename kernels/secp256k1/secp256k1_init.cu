@@ -16,11 +16,12 @@
 // Dependencies: secp256k1_precomp.cuh, secp256k1_ops.cuh
 // =============================================================================
 
-#include "secp256k1_precomp.cuh"
 #include "secp256k1_ops.cuh"
 #include <cstdint>
 
 // Define the precomp table in constant memory
+// Note: This is the actual definition; secp256k1_precomp.cuh has the extern declaration
+#define SECP256K1_PRECOMP_SIZE 256
 __device__ __constant__ secp256k1_point d_secp256k1_precomp[SECP256K1_PRECOMP_SIZE];
 
 // =============================================================================

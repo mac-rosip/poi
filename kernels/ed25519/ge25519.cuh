@@ -315,48 +315,6 @@ __device__ __forceinline__ void ge25519_niels_sub(ge25519_p3 &R, const ge25519_p
 }
 
 // =============================================================================
-// ge25519_compress — Compress extended point to 32 bytes
-//
-// Ed25519 encoding: little-endian y coordinate with sign bit of x in bit 255.
-//   1. Convert from extended to affine: x = X/Z, y = Y/Z
-//   2. Encode y as 32 bytes little-endian
-//   3. Set high bit of byte 31 to the low bit of x
-// =============================================================================
-__device__ __forceinline__ void ge25519_compress(uint8_t out[32], const ge25519_p3 &P) {
-    fe25519 recip, x, y;
-
-    // Compute Z^(-1)
-    fe25519_invert(recip, P.Z);
-
-    // x = X * Z^(-1), y = Y * Z^(-1)
-    fe25519_mul(x, P.X, recip);
-    fe25519_mul(y, P.Y, recip);
-
-    // Fully reduce
-    fe25519_carry(x);
-    fe25519_reduce(x);
-    fe25519_carry(y);
-    fe25519_reduce(y);
-
-    // Encode y as little-endian 32 bytes
-    // Each limb is 51 bits; pack into bytes
-    uint64_t y_bits[4];
-    y_bits[0] = (uint64_t)y.v[0] | ((uint64_t)y.v[1] << 51);
-    y_bits[1] = ((uint64_t)y.v[1] >> 13) | ((uint64_t)y.v[2] << 38);
-    y_bits[2] = ((uint64_t)y.v[2] >> 26) | ((uint64_t)y.v[3] << 25);
-    y_bits[3] = ((uint64_t)y.v[3] >> 39) | ((uint64_t)y.v[4] << 12);
-
-    // Write as little-endian bytes
-    for (int i = 0; i < 8; ++i) out[i]      = (y_bits[0] >> (8 * i)) & 0xFF;
-    for (int i = 0; i < 8; ++i) out[8 + i]  = (y_bits[1] >> (8 * i)) & 0xFF;
-    for (int i = 0; i < 8; ++i) out[16 + i] = (y_bits[2] >> (8 * i)) & 0xFF;
-    for (int i = 0; i < 8; ++i) out[24 + i] = (y_bits[3] >> (8 * i)) & 0xFF;
-
-    // Set sign bit: bit 255 = low bit of x
-    out[31] |= ((uint8_t)(x.v[0] & 1)) << 7;
-}
-
-// =============================================================================
 // fe25519_invert — Modular inverse using Fermat's little theorem
 //   a^(-1) = a^(p-2) mod p, where p = 2^255 - 19
 //   Uses an addition chain for p-2 = 2^255 - 21
@@ -436,3 +394,46 @@ __device__ __forceinline__ void fe25519_invert(fe25519 &r, const fe25519 &z) {
     // z^(2^255 - 32 + 11) = z^(2^255 - 21) = z^(p-2)
     fe25519_mul(r, t1, t0);     // multiply by z^11
 }
+
+// =============================================================================
+// ge25519_compress — Compress extended point to 32 bytes
+//
+// Ed25519 encoding: little-endian y coordinate with sign bit of x in bit 255.
+//   1. Convert from extended to affine: x = X/Z, y = Y/Z
+//   2. Encode y as 32 bytes little-endian
+//   3. Set high bit of byte 31 to the low bit of x
+// =============================================================================
+__device__ __forceinline__ void ge25519_compress(uint8_t out[32], const ge25519_p3 &P) {
+    fe25519 recip, x, y;
+
+    // Compute Z^(-1)
+    fe25519_invert(recip, P.Z);
+
+    // x = X * Z^(-1), y = Y * Z^(-1)
+    fe25519_mul(x, P.X, recip);
+    fe25519_mul(y, P.Y, recip);
+
+    // Fully reduce
+    fe25519_carry(x);
+    fe25519_reduce(x);
+    fe25519_carry(y);
+    fe25519_reduce(y);
+
+    // Encode y as little-endian 32 bytes
+    // Each limb is 51 bits; pack into bytes
+    uint64_t y_bits[4];
+    y_bits[0] = (uint64_t)y.v[0] | ((uint64_t)y.v[1] << 51);
+    y_bits[1] = ((uint64_t)y.v[1] >> 13) | ((uint64_t)y.v[2] << 38);
+    y_bits[2] = ((uint64_t)y.v[2] >> 26) | ((uint64_t)y.v[3] << 25);
+    y_bits[3] = ((uint64_t)y.v[3] >> 39) | ((uint64_t)y.v[4] << 12);
+
+    // Write as little-endian bytes
+    for (int i = 0; i < 8; ++i) out[i]      = (y_bits[0] >> (8 * i)) & 0xFF;
+    for (int i = 0; i < 8; ++i) out[8 + i]  = (y_bits[1] >> (8 * i)) & 0xFF;
+    for (int i = 0; i < 8; ++i) out[16 + i] = (y_bits[2] >> (8 * i)) & 0xFF;
+    for (int i = 0; i < 8; ++i) out[24 + i] = (y_bits[3] >> (8 * i)) & 0xFF;
+
+    // Set sign bit: bit 255 = low bit of x
+    out[31] |= ((uint8_t)(x.v[0] & 1)) << 7;
+}
+

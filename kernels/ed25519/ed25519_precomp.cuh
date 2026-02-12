@@ -25,6 +25,5 @@
 #define ED25519_PRECOMP_SIZE 256
 
 // Device constant memory for the precomputed Niels table
+// Note: Defined in ed25519_keygen.cu, declared extern here for other .cu files
 extern __device__ __constant__ ge25519_niels d_ed25519_precomp[ED25519_PRECOMP_SIZE];
-
-// Host-side storage declared in ed25519_keygen.cu
