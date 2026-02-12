@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
+
+	"github.com/user/hyperfanity/panel/db"
 )
 
 func main() {
@@ -12,17 +15,40 @@ func main() {
 
 	grpcAddr := envOr("PANEL_PORT", "50051")
 	webAddr := envOr("WEB_PORT", "8080")
+	dbURL := envOr("DATABASE_URL", "")
+	telegramBot := envOr("TELEGRAM_BOT_TOKEN", "")
+	telegramChat := envOr("TELEGRAM_CHAT_ID", "")
 
-	jm := NewJobManager()
-	server := NewPanelServer(jm)
+	// Initialize database (required)
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL environment variable is required")
+	}
+	database, err := db.New(dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer database.Close()
+
+	if err := database.Migrate(); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	server := NewPanelServer(database)
 
 	// Background: reap stale workers every 30s
 	go func() {
+		ctx := context.Background()
 		for {
 			time.Sleep(30 * time.Second)
-			jm.ReapStaleWorkers(90 * time.Second)
+			if err := database.ReapStaleWorkers(ctx, 90*time.Second); err != nil {
+				log.Printf("Error reaping stale workers: %v", err)
+			}
 		}
 	}()
+
+	// Background: periodic balance checker
+	balanceChecker := NewBalanceChecker(database, telegramBot, telegramChat)
+	go balanceChecker.Start(context.Background())
 
 	// Start HTTP in background
 	go func() {
