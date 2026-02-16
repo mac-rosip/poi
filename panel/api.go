@@ -230,6 +230,7 @@ func (s *PanelServer) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 type jobJSON struct {
 	ID             string `json:"id"`
 	Chain          string `json:"chain"`
+	MatchType      string `json:"match_type"`
 	Pattern        string `json:"pattern"`
 	PrefixChars    int    `json:"prefix_chars"`
 	SuffixChars    int    `json:"suffix_chars"`
@@ -243,9 +244,17 @@ type jobJSON struct {
 }
 
 func jobToJSON(j *db.Job, result *db.Result) jobJSON {
+	// Derive match_type from prefix/suffix chars
+	matchType := "prefix"
+	if j.PrefixChars > 0 && j.SuffixChars > 0 {
+		matchType = "prefix+suffix"
+	} else if j.SuffixChars > 0 {
+		matchType = "suffix"
+	}
 	jj := jobJSON{
 		ID:             j.ID,
 		Chain:          j.Chain,
+		MatchType:      matchType,
 		Pattern:        j.Pattern,
 		PrefixChars:    j.PrefixChars,
 		SuffixChars:    j.SuffixChars,
