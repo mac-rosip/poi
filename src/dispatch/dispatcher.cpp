@@ -121,8 +121,8 @@ void Dispatcher::init_ed25519() {
     devices_[0].set_current();
     ed25519_init_precomp();
 
-    // Per-point memory: seed(32) + pubkey(32) + priv(32) + 4*fe25519(40 each) = 256 bytes
-    const size_t bytes_per_point = 32 + 32 + 32 + 4 * 40;
+    // Per-point memory: seed(32) + pubkey(32) + priv(32) = 96 bytes
+    const size_t bytes_per_point = 32 + 32 + 32;
 
     for (auto& dev : devices_) {
         dev.set_current();
@@ -136,20 +136,9 @@ void Dispatcher::init_ed25519() {
         state.d_priv_seeds = new GPUMemory(state.num_points * 32);
         state.d_results    = new GPUMemory(sizeof(uint32_t) * 3 + 32);
 
-        // Extended coordinate arrays (fe25519 = 40 bytes)
-        state.d_points_X = new GPUMemory(state.num_points * 40);
-        state.d_points_Y = new GPUMemory(state.num_points * 40);
-        state.d_points_Z = new GPUMemory(state.num_points * 40);
-        state.d_points_T = new GPUMemory(state.num_points * 40);
-
-        // Generate initial seeds
-        std::vector<uint8_t> seeds(state.num_points * 32);
-        generate_random_seeds(seeds.data(), seeds.size());
-        state.d_seeds->copy_to_device(seeds.data());
-
-        // Zero results
-        uint8_t zero_result[36 + 32] = {0};
-        state.d_results->copy_to_device(zero_result);
+        // Pinned host buffers for fast DMA
+        state.h_pubkeys    = new PinnedMemory(state.num_points * 32);
+        state.h_priv_seeds = new PinnedMemory(state.num_points * 32);
 
         ed_states_.push_back(state);
     }
@@ -239,48 +228,65 @@ VanityResult Dispatcher::run_ed25519(ProgressCallback progress_cb) {
     result.score = 0;
     result.chain = ChainType::SOLANA;
 
-    // Initial keygen pass
-    for (size_t d = 0; d < ed_states_.size(); ++d) {
-        auto& state = ed_states_[d];
-        devices_[d].set_current();
-
-        ed25519_keygen_launch(
-            static_cast<const uint8_t*>(state.d_seeds->get()),
-            static_cast<uint8_t*>(state.d_pubkeys->get()),
-            static_cast<uint8_t*>(state.d_priv_seeds->get()),
-            state.num_points,
-            state.stream
-        );
-        cudaStreamSynchronize(state.stream);
-    }
-
     while (running_) {
         for (size_t d = 0; d < ed_states_.size(); ++d) {
+            if (!running_) break;
+
             auto& state = ed_states_[d];
             devices_[d].set_current();
 
-            // Launch iterate kernel
-            ed25519_iterate_launch(
-                state.d_points_X->get(),
-                state.d_points_Y->get(),
-                state.d_points_Z->get(),
-                state.d_points_T->get(),
+            // Generate fresh random seeds each batch
+            generate_random_seeds(
+                static_cast<uint8_t*>(state.h_priv_seeds->get()),
+                state.num_points * 32
+            );
+            state.d_seeds->copy_to_device(state.h_priv_seeds->get());
+
+            // Launch keygen: seed → pubkey + priv_seed
+            ed25519_keygen_launch(
+                static_cast<const uint8_t*>(state.d_seeds->get()),
                 static_cast<uint8_t*>(state.d_pubkeys->get()),
+                static_cast<uint8_t*>(state.d_priv_seeds->get()),
                 state.num_points,
-                config_.iterations_per_launch,
                 state.stream
             );
-
             cudaStreamSynchronize(state.stream);
 
-            uint64_t keys_checked = (uint64_t)state.num_points * config_.iterations_per_launch;
-            speed_sample_.sample(keys_checked);
+            speed_sample_.sample(state.num_points);
 
             if (config_.benchmark_mode) {
                 if (progress_cb) {
                     progress_cb(speed_sample_.getSpeed(), speed_sample_.getTotal(), 0);
                 }
                 continue;
+            }
+
+            // Copy pubkeys and private seeds back to host
+            state.d_pubkeys->copy_to_host(state.h_pubkeys->get());
+            state.d_priv_seeds->copy_to_host(state.h_priv_seeds->get());
+
+            const uint8_t* pubkeys = static_cast<const uint8_t*>(state.h_pubkeys->get());
+            const uint8_t* priv_seeds = static_cast<const uint8_t*>(state.h_priv_seeds->get());
+
+            // Score each address on host
+            for (uint32_t i = 0; i < state.num_points; ++i) {
+                const uint8_t* pubkey = pubkeys + i * 32;
+                std::string address = chain::solana_address_from_pubkey(pubkey);
+                uint32_t s = config_.scorer.score(address);
+
+                if (s > best_score_) {
+                    best_score_ = s;
+                }
+
+                if (config_.scorer.meets_threshold(s)) {
+                    result.found = true;
+                    result.score = s;
+                    result.address = address;
+                    result.private_key.assign(priv_seeds + i * 32, priv_seeds + i * 32 + 32);
+                    result.public_key_hash.assign(pubkey, pubkey + 32);
+                    running_ = false;
+                    return result;
+                }
             }
 
             if (progress_cb) {
@@ -350,10 +356,8 @@ void Dispatcher::cleanup() {
         delete state.d_pubkeys;
         delete state.d_priv_seeds;
         delete state.d_results;
-        delete state.d_points_X;
-        delete state.d_points_Y;
-        delete state.d_points_Z;
-        delete state.d_points_T;
+        delete state.h_pubkeys;
+        delete state.h_priv_seeds;
         GPUDevice::destroy_stream(state.stream);
     }
     ed_states_.clear();

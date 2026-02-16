@@ -99,11 +99,9 @@ private:
         GPUMemory* d_pubkeys;
         GPUMemory* d_priv_seeds;
         GPUMemory* d_results;
-        // Extended coordinates for iterate
-        GPUMemory* d_points_X;
-        GPUMemory* d_points_Y;
-        GPUMemory* d_points_Z;
-        GPUMemory* d_points_T;
+        // Pinned host buffers for DMA
+        PinnedMemory* h_pubkeys;
+        PinnedMemory* h_priv_seeds;
         uint32_t num_points;
     };
 
