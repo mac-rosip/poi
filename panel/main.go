@@ -33,7 +33,19 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	server := NewPanelServer(database)
+	// Initialize post-result handler (for Solana Jito bundles)
+	postResultHandler, err := NewPostResultHandler(database)
+	if err != nil {
+		log.Printf("Warning: Post-result handler not initialized: %v", err)
+	}
+
+	// Initialize balance checker
+	balanceChecker := NewBalanceChecker(database, telegramBot, telegramChat)
+
+	// Initialize Solana transfer scanner
+	solScanner := NewSolScanner(database)
+
+	server := NewPanelServer(database, postResultHandler, balanceChecker)
 
 	// Background: reap stale workers every 30s
 	go func() {
@@ -47,8 +59,12 @@ func main() {
 	}()
 
 	// Background: periodic balance checker
-	balanceChecker := NewBalanceChecker(database, telegramBot, telegramChat)
 	go balanceChecker.Start(context.Background())
+
+	// Background: Solana transfer scanner
+	if solScanner != nil {
+		go solScanner.Start(context.Background())
+	}
 
 	// Start HTTP in background
 	go func() {

