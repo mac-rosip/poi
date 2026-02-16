@@ -177,11 +177,11 @@ func (db *DB) DeleteJob(ctx context.Context, id string) error {
 	return err
 }
 
-// ListJobs returns all jobs ordered by creation time.
+// ListJobs returns recent jobs ordered by creation time (limited to 200).
 func (db *DB) ListJobs(ctx context.Context) ([]*Job, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, event_id, strategy_id, chain, pattern, prefix_chars, suffix_chars, min_score, full_keypair_mode, status, assigned_worker, created_at, updated_at
-		FROM jobs ORDER BY created_at DESC
+		FROM jobs ORDER BY created_at DESC LIMIT 200
 	`)
 	if err != nil {
 		return nil, err

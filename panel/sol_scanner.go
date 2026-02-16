@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	// MinTransferLamports is the minimum SOL transfer to trigger a job (5 SOL).
-	MinTransferLamports = 5_000_000_000
+	// MinTransferLamports is the minimum SOL transfer to trigger a job (50 SOL).
+	MinTransferLamports = 50_000_000_000
 	// SolanaSystemProgram is the System Program address.
 	SolanaSystemProgram = "11111111111111111111111111111111"
 )
