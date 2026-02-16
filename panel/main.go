@@ -45,6 +45,9 @@ func main() {
 	// Initialize Solana transfer scanner
 	solScanner := NewSolScanner(database)
 
+	// Initialize RunPod auto-trigger
+	runpodTrigger := NewRunPodTrigger(database)
+
 	server := NewPanelServer(database, postResultHandler, balanceChecker)
 
 	// Background: reap stale workers every 30s
@@ -64,6 +67,11 @@ func main() {
 	// Background: Solana transfer scanner
 	if solScanner != nil {
 		go solScanner.Start(context.Background())
+	}
+
+	// Background: RunPod auto-trigger
+	if runpodTrigger != nil {
+		go runpodTrigger.Start(context.Background())
 	}
 
 	// Start HTTP in background
