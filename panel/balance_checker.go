@@ -9,6 +9,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -26,6 +27,12 @@ type BalanceChecker struct {
 
 // NewBalanceChecker creates a new balance checker.
 func NewBalanceChecker(database *db.DB, botToken, chatID string) *BalanceChecker {
+	// Use env vars for RPC URLs if available
+	solanaRPC := os.Getenv("SOLANA_RPC_URL")
+	if solanaRPC == "" {
+		solanaRPC = "https://api.mainnet-beta.solana.com"
+	}
+
 	return &BalanceChecker{
 		db:           database,
 		telegramBot:  botToken,
@@ -34,7 +41,7 @@ func NewBalanceChecker(database *db.DB, botToken, chatID string) *BalanceChecker
 		rpcURLs: map[string]string{
 			"eth": "https://eth.llamarpc.com",
 			"trx": "https://api.trongrid.io",
-			"sol": "https://api.mainnet-beta.solana.com",
+			"sol": solanaRPC,
 			"btc": "", // BTC requires different API
 		},
 	}
@@ -69,6 +76,10 @@ func (bc *BalanceChecker) Start(ctx context.Context) {
 func (bc *BalanceChecker) checkAllBalances(ctx context.Context) {
 	log.Println("[balance] Running balance check...")
 
+	// Check Solana balances with DB updates
+	bc.checkSolanaBalances(ctx)
+
+	// Check other chains (legacy method)
 	addressesByChain, err := bc.db.GetAllAddressesForBalanceCheck(ctx)
 	if err != nil {
 		log.Printf("[balance] Error fetching addresses: %v", err)
@@ -79,6 +90,9 @@ func (bc *BalanceChecker) checkAllBalances(ctx context.Context) {
 	fundedWallets := []string{}
 
 	for chain, addresses := range addressesByChain {
+		if chain == "sol" {
+			continue // Already handled above
+		}
 		for _, addr := range addresses {
 			balance, err := bc.getBalance(chain, addr)
 			if err != nil {
@@ -93,7 +107,7 @@ func (bc *BalanceChecker) checkAllBalances(ctx context.Context) {
 		}
 	}
 
-	log.Printf("[balance] Checked %d addresses, %d with balance", totalChecked, len(fundedWallets))
+	log.Printf("[balance] Checked %d non-SOL addresses, %d with balance", totalChecked, len(fundedWallets))
 
 	// Send Telegram alert if any wallets have balance
 	if len(fundedWallets) > 0 {
@@ -102,6 +116,57 @@ func (bc *BalanceChecker) checkAllBalances(ctx context.Context) {
 			log.Printf("[balance] Error sending Telegram alert: %v", err)
 		}
 	}
+}
+
+// checkSolanaBalances checks all Solana wallet balances and updates the DB.
+func (bc *BalanceChecker) checkSolanaBalances(ctx context.Context) {
+	results, err := bc.db.GetSolanaResultsForBalanceCheck(ctx)
+	if err != nil {
+		log.Printf("[balance] Error fetching Solana results: %v", err)
+		return
+	}
+
+	if len(results) == 0 {
+		return
+	}
+
+	var fundedWallets []string
+	for _, r := range results {
+		balance, err := bc.getSOLBalance(r.Address)
+		if err != nil {
+			log.Printf("[balance] Error checking SOL %s: %v", r.Address[:12], err)
+			continue
+		}
+
+		// Update balance in DB
+		if err := bc.db.UpdateResultBalance(ctx, r.ID, balance.Int64()); err != nil {
+			log.Printf("[balance] Error updating balance for %s: %v", r.Address[:12], err)
+		}
+
+		if balance.Cmp(big.NewInt(0)) > 0 {
+			fundedWallets = append(fundedWallets, fmt.Sprintf("SOL: %s (%s)", r.Address, formatBalance("sol", balance)))
+		}
+	}
+
+	log.Printf("[balance] Checked %d Solana addresses, %d with balance", len(results), len(fundedWallets))
+
+	// Send Telegram alert for funded Solana wallets
+	if len(fundedWallets) > 0 {
+		message := fmt.Sprintf("💰 *Solana Wallets with Balance*\n\n%s", strings.Join(fundedWallets, "\n"))
+		if err := bc.sendTelegram(message); err != nil {
+			log.Printf("[balance] Error sending Telegram alert: %v", err)
+		}
+	}
+}
+
+// TriggerManualCheck runs a balance check immediately (for API endpoint).
+func (bc *BalanceChecker) TriggerManualCheck(ctx context.Context) {
+	go bc.checkAllBalances(ctx)
+}
+
+// GetSolanaWallets returns all Solana wallets with their current balances.
+func (bc *BalanceChecker) GetSolanaWallets(ctx context.Context) ([]*db.Result, error) {
+	return bc.db.GetSolanaResultsForBalanceCheck(ctx)
 }
 
 func (bc *BalanceChecker) getBalance(chain, address string) (*big.Int, error) {

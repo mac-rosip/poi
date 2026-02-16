@@ -116,6 +116,11 @@ func (db *DB) Migrate() error {
 			score INTEGER NOT NULL,
 			private_key BYTEA NOT NULL,
 			public_key BYTEA,
+			funding_status VARCHAR(16) DEFAULT 'pending',
+			bundle_id VARCHAR(128),
+			funding_error TEXT,
+			balance_lamports BIGINT DEFAULT 0,
+			last_balance_check TIMESTAMPTZ,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 

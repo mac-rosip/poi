@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // JobStatus represents the state of a mining job.
@@ -104,7 +106,7 @@ func (db *DB) GetNextPendingJob(ctx context.Context, workerID string, supportedC
 
 	if len(supportedChains) > 0 {
 		query += ` AND chain = ANY($1)`
-		args = append(args, supportedChains)
+		args = append(args, pq.Array(supportedChains))
 	}
 
 	query += ` ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED`
